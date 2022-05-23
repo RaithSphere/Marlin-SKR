@@ -60,10 +60,11 @@ enum menuID : uint8_t {
         PID,
           HotendPID,
           BedPID,
-        #if HAS_PREHEAT
-          #define _PREHEAT_ID(N) Preheat##N,
-          REPEAT_1(PREHEAT_COUNT, _PREHEAT_ID)
-        #endif
+        Preheat1,
+        Preheat2,
+        Preheat3,
+        Preheat4,
+        Preheat5,
       Motion,
         HomeOffsets,
         MaxSpeed,

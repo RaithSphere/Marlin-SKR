@@ -77,18 +77,10 @@
   #include "servo.h"
 #endif
 
-#if HAS_PTC
-  #include "../feature/probe_temp_comp.h"
-#endif
-
-#if ENABLED(X_AXIS_TWIST_COMPENSATION)
-  #include "../feature/x_twist.h"
-#endif
-
 #if ENABLED(EXTENSIBLE_UI)
   #include "../lcd/extui/ui_api.h"
-#elif ENABLED(DWIN_LCD_PROUI)
-  #include "../lcd/e3v2/proui/dwin.h"
+#elif ENABLED(DWIN_CREALITY_LCD_ENHANCED)
+  #include "../lcd/e3v2/enhanced/dwin.h"
 #endif
 
 #define DEBUG_OUT ENABLED(DEBUG_LEVELING_FEATURE)
@@ -128,17 +120,6 @@ xyz_pos_t Probe::offset; // Initialized by settings.load()
       WRITE(SOL1_PIN, !stow); // switch solenoid
     #endif
   }
-
-#elif ENABLED(MAGLEV4)
-
-  // Write trigger pin to release the probe
-  inline void maglev_deploy() {
-    WRITE(MAGLEV_TRIGGER_PIN, HIGH);
-    delay(MAGLEV_TRIGGER_DELAY);
-    WRITE(MAGLEV_TRIGGER_PIN, LOW);
-  }
-
-  inline void maglev_idle() { do_blocking_move_to_z(10); }
 
 #elif ENABLED(TOUCH_MI_PROBE)
 
@@ -306,16 +287,17 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
         if (deploy != PROBE_TRIGGERED()) break;
       #endif
 
-      OKAY_BUZZ();
+      BUZZ(100, 659);
+      BUZZ(100, 698);
 
       FSTR_P const ds_str = deploy ? GET_TEXT_F(MSG_MANUAL_DEPLOY) : GET_TEXT_F(MSG_MANUAL_STOW);
       ui.return_to_status();       // To display the new status message
       ui.set_status(ds_str, 99);
-      SERIAL_ECHOLNF(deploy ? GET_EN_TEXT_F(MSG_MANUAL_DEPLOY) : GET_EN_TEXT_F(MSG_MANUAL_STOW));
+      SERIAL_ECHOLNF(ds_str);
 
-      TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_do(PROMPT_USER_CONTINUE, ds_str, FPSTR(CONTINUE_STR)));
-      TERN_(EXTENSIBLE_UI, ExtUI::onUserConfirmRequired(ds_str));
-      TERN_(DWIN_LCD_PROUI, DWIN_Popup_Confirm(ICON_BLTouch, ds_str, FPSTR(CONTINUE_STR)));
+      TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_do(PROMPT_USER_CONTINUE, F("Stow Probe"), FPSTR(CONTINUE_STR)));
+      TERN_(EXTENSIBLE_UI, ExtUI::onUserConfirmRequired(F("Stow Probe")));
+      TERN_(DWIN_CREALITY_LCD_ENHANCED, DWIN_Popup_Confirm(ICON_BLTouch, F("Stow Probe"), FPSTR(CONTINUE_STR)));
       TERN_(HAS_RESUME_CONTINUE, wait_for_user_response());
       ui.reset_status();
 
@@ -328,10 +310,6 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
     #if HAS_SOLENOID_1
       WRITE(SOL1_PIN, deploy);
     #endif
-
-  #elif ENABLED(MAGLEV4)
-
-    deploy ? maglev_deploy() : maglev_idle();
 
   #elif ENABLED(Z_PROBE_SLED)
 
@@ -416,21 +394,6 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
 #endif
 
 /**
- * Print an error and stop()
- */
-void Probe::probe_error_stop() {
-  SERIAL_ERROR_START();
-  SERIAL_ECHOPGM(STR_STOP_PRE);
-  #if EITHER(Z_PROBE_SLED, Z_PROBE_ALLEN_KEY)
-    SERIAL_ECHOPGM(STR_STOP_UNHOMED);
-  #elif ENABLED(BLTOUCH)
-    SERIAL_ECHOPGM(STR_STOP_BLTOUCH);
-  #endif
-  SERIAL_ECHOLNPGM(STR_STOP_POST);
-  stop();
-}
-
-/**
  * Attempt to deploy or stow the probe
  *
  * Return TRUE if the probe could not be deployed/stowed
@@ -458,7 +421,8 @@ bool Probe::set_deployed(const bool deploy) {
 
   #if EITHER(Z_PROBE_SLED, Z_PROBE_ALLEN_KEY)
     if (homing_needed_error(TERN_(Z_PROBE_SLED, _BV(X_AXIS)))) {
-      probe_error_stop();
+      SERIAL_ERROR_MSG(STR_STOP_UNHOMED);
+      stop();
       return true;
     }
   #endif
@@ -498,12 +462,15 @@ bool Probe::set_deployed(const bool deploy) {
 }
 
 /**
- * @brief Move down until the probe triggers or the low limit is reached
- *        Used by run_z_probe to do a single Z probe move.
+ * @brief Used by run_z_probe to do a single Z probe move.
  *
  * @param  z        Z destination
  * @param  fr_mm_s  Feedrate in mm/s
  * @return true to indicate an error
+ */
+
+/**
+ * @brief Move down until the probe triggers or the low limit is reached
  *
  * @details Used by run_z_probe to get each bed Z height measurement.
  *          Sets current_position.z to the height where the probe triggered
@@ -805,11 +772,7 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
   #endif
 
   // On delta keep Z below clip height or do_blocking_move_to will abort
-  xyz_pos_t npos = NUM_AXIS_ARRAY(
-    rx, ry, TERN(DELTA, _MIN(delta_clip_start_height, current_position.z), current_position.z),
-    current_position.i, current_position.j, current_position.k,
-    current_position.u, current_position.v, current_position.w
-  );
+  xyz_pos_t npos = { rx, ry, TERN(DELTA, _MIN(delta_clip_start_height, current_position.z), current_position.z) };
   if (!can_reach(npos, probe_relative)) {
     if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPGM("Position Not Reachable");
     return NAN;
@@ -820,11 +783,7 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
   do_blocking_move_to(npos, feedRate_t(XY_PROBE_FEEDRATE_MM_S));
 
   float measured_z = NAN;
-  if (!deploy()) {
-    measured_z = run_z_probe(sanity_check) + offset.z;
-    TERN_(HAS_PTC, ptc.apply_compensation(measured_z));
-    TERN_(X_AXIS_TWIST_COMPENSATION, measured_z += xatc.compensation(npos + offset_xy));
-  }
+  if (!deploy()) measured_z = run_z_probe(sanity_check) + offset.z;
   if (!isnan(measured_z)) {
     const bool big_raise = raise_after == PROBE_PT_BIG_RAISE;
     if (big_raise || raise_after == PROBE_PT_RAISE)
@@ -899,10 +858,8 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
    * Change the current in the TMC drivers to N##_CURRENT_HOME. And we save the current configuration of each TMC driver.
    */
   void Probe::set_homing_current(const bool onoff) {
-    #define _defined(N) defined(N)
-    #define HAS_CURRENT_HOME(N) (N##_CURRENT_HOME > 0 && N##_CURRENT_HOME != N##_CURRENT)
-    #define _HOME_ELEM(N) HAS_CURRENT_HOME(N) ||
-    #if MAIN_AXIS_MAP(_HOME_ELEM) 0
+    #define HAS_CURRENT_HOME(N) (defined(N##_CURRENT_HOME) && N##_CURRENT_HOME != N##_CURRENT)
+    #if HAS_CURRENT_HOME(X) || HAS_CURRENT_HOME(Y) || HAS_CURRENT_HOME(Z)
       #if ENABLED(DELTA)
         static int16_t saved_current_X, saved_current_Y;
       #endif

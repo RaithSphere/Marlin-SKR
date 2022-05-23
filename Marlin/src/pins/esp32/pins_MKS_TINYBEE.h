@@ -31,9 +31,9 @@
 #include "env_validate.h"
 
 #if EXTRUDERS > 2 || E_STEPPERS > 2
-  #error "MKS TinyBee supports up to 2 E steppers."
+  #error "MKS ESP Nano only supports two E Steppers. Comment out this line to continue."
 #elif HOTENDS > 2
-  #error "MKS TinyBee supports up to 2 hotends / E steppers."
+  #error "MKS ESP Nano only supports two hotend / E-stepper. Comment out this line to continue."
 #endif
 
 #define BOARD_INFO_NAME      "MKS TinyBee"
@@ -114,18 +114,13 @@
 //#define E1_AUTO_FAN_PIN                    149  // need to update Configuration_adv.h @section extruder
 
 //
-// ADC Reference Voltage
-//
-#define ADC_REFERENCE_VOLTAGE                2.5  // 2.5V reference VDDA
-
-//
 // MicroSD card
 //
 #define SD_MOSI_PIN                           23
 #define SD_MISO_PIN                           19
 #define SD_SCK_PIN                            18
 #define SDSS                                   5
-#define SD_DETECT_PIN                         34  // IO34 default is SD_DET signal (Jump to SDDET)
+#define SD_DETECT_PIN                         34  // IO34 default is SD_DET signal(Jump to SDDET)
 #define USES_SHARED_SPI                           // SPI is shared by SD card with TMC SPI drivers
 
 /**
@@ -182,9 +177,9 @@
 
   #elif ENABLED(MKS_MINI_12864_V3)
 
-    #define LCD_PINS_DC              EXP1_07_PIN
     #define DOGLCD_CS                EXP1_08_PIN
-    #define DOGLCD_A0                LCD_PINS_DC
+    #define DOGLCD_A0                EXP1_07_PIN
+    #define LCD_PINS_DC                DOGLCD_A0
     #define LCD_BACKLIGHT_PIN                 -1
     #define LCD_RESET_PIN            EXP1_06_PIN
     #define NEOPIXEL_PIN             EXP1_05_PIN

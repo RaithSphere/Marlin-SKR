@@ -59,7 +59,7 @@ DMA_HandleTypeDef hdma_sdio;
 /*
   SDIO_INIT_CLK_DIV is 118
   SDIO clock frequency is 48MHz / (TRANSFER_CLOCK_DIV + 2)
-  SDIO init clock frequency should not exceed 400kHz = 48MHz / (118 + 2)
+  SDIO init clock frequency should not exceed 400KHz = 48MHz / (118 + 2)
 
   Default TRANSFER_CLOCK_DIV is 2 (118 / 40)
   Default SDIO clock frequency is 48MHz / (2 + 2) = 12 MHz
@@ -208,7 +208,7 @@ bool SDIO_Init() {
 
   uint8_t retry_Cnt = retryCnt;
   for (;;) {
-    hal.watchdog_refresh();
+    TERN_(USE_WATCHDOG, HAL_watchdog_refresh());
     status = (bool) HAL_SD_Init(&hsd);
     if (!status) break;
     if (!--retry_Cnt) return false;   // return failing status if retries are exhausted
@@ -219,7 +219,7 @@ bool SDIO_Init() {
   #if PINS_EXIST(SDIO_D1, SDIO_D2, SDIO_D3) // go to 4 bit wide mode if pins are defined
     retry_Cnt = retryCnt;
     for (;;) {
-      hal.watchdog_refresh();
+      TERN_(USE_WATCHDOG, HAL_watchdog_refresh());
       if (!HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B)) break;  // some cards are only 1 bit wide so a pass here is not required
       if (!--retry_Cnt) break;
     }
@@ -228,7 +228,7 @@ bool SDIO_Init() {
       SD_LowLevel_Init();
       retry_Cnt = retryCnt;
       for (;;) {
-        hal.watchdog_refresh();
+        TERN_(USE_WATCHDOG, HAL_watchdog_refresh());
         status = (bool) HAL_SD_Init(&hsd);
         if (!status) break;
         if (!--retry_Cnt) return false;   // return failing status if retries are exhausted
@@ -243,7 +243,7 @@ bool SDIO_Init() {
 static bool SDIO_ReadWriteBlock_DMA(uint32_t block, const uint8_t *src, uint8_t *dst) {
   if (HAL_SD_GetCardState(&hsd) != HAL_SD_CARD_TRANSFER) return false;
 
-  hal.watchdog_refresh();
+  TERN_(USE_WATCHDOG, HAL_watchdog_refresh());
 
   HAL_StatusTypeDef ret;
   if (src) {
